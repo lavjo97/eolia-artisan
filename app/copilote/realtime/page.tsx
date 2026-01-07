@@ -60,19 +60,37 @@ export default function RealtimeCopilotePage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [apiKey, setApiKey] = useState<string>('');
 
-  // Charger la clé API des paramètres
+  // Charger la clé API des paramètres locaux ou depuis le serveur
   useEffect(() => {
-    const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (saved) {
-      try {
-        const settings = JSON.parse(saved);
-        if (settings.openaiApiKey) {
-          setApiKey(settings.openaiApiKey);
+    const loadApiKey = async () => {
+      // D'abord essayer les paramètres locaux
+      const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      if (saved) {
+        try {
+          const settings = JSON.parse(saved);
+          if (settings.openaiApiKey) {
+            setApiKey(settings.openaiApiKey);
+            return;
+          }
+        } catch {
+          // Ignorer
         }
-      } catch {
-        // Ignorer
       }
-    }
+      
+      // Sinon, essayer de récupérer depuis le serveur (Vercel env vars)
+      try {
+        const response = await fetch('/api/realtime');
+        const data = await response.json();
+        if (data.success && data.apiKey) {
+          setApiKey(data.apiKey);
+          console.log('✅ Clé API récupérée depuis le serveur Vercel');
+        }
+      } catch (err) {
+        console.log('⚠️ Impossible de récupérer la clé API depuis le serveur:', err);
+      }
+    };
+    
+    loadApiKey();
   }, []);
 
   // Appliquer une action au formulaire

@@ -284,25 +284,51 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
       return;
     }
 
-    // Utiliser la clé API de l'environnement via l'API route
-    const key = apiKey;
-    if (!key) {
-      // Essayer de se connecter via l'API route proxy
-      console.log('⚠️ Pas de clé API locale, utilisation du proxy...');
-    }
-
     updateState({ isConnecting: true, error: null });
 
     try {
+      // Récupérer la clé API depuis le serveur ou les paramètres locaux
+      let key = apiKey;
+      
+      if (!key) {
+        console.log('🔑 Récupération de la clé API depuis le serveur...');
+        try {
+          const response = await fetch('/api/realtime');
+          const data = await response.json();
+          
+          if (data.success && data.apiKey) {
+            key = data.apiKey;
+            console.log('✅ Clé API récupérée depuis Vercel');
+          } else if (data.error) {
+            throw new Error(data.error);
+          }
+        } catch (fetchError) {
+          console.error('❌ Erreur récupération clé API:', fetchError);
+          updateState({ 
+            error: 'Impossible de récupérer la clé API. Vérifiez la configuration Vercel.', 
+            isConnecting: false 
+          });
+          onError?.('Impossible de récupérer la clé API');
+          return;
+        }
+      }
+
+      if (!key) {
+        updateState({ 
+          error: 'Clé API OpenAI non disponible', 
+          isConnecting: false 
+        });
+        onError?.('Clé API OpenAI non disponible');
+        return;
+      }
+
       console.log('🔌 Connexion à OpenAI Realtime (mode silencieux)...');
       
-      // Construire l'URL avec la clé API
-      const wsKey = key || 'proxy';
       const url = 'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17';
       
       wsRef.current = new WebSocket(url, [
         'realtime',
-        `openai-insecure-api-key.${wsKey}`,
+        `openai-insecure-api-key.${key}`,
         'openai-beta.realtime-v1',
       ]);
 
