@@ -298,8 +298,9 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
           
           if (data.success && data.apiKey) {
             // Nettoyer la clé API (enlever espaces et retours à la ligne)
-            key = data.apiKey.trim().replace(/[\r\n]/g, '');
-            console.log('✅ Clé API récupérée depuis Vercel (longueur:', key.length, ')');
+            const cleanedKey = String(data.apiKey).trim().replace(/[\r\n]/g, '');
+            key = cleanedKey;
+            console.log('✅ Clé API récupérée depuis Vercel (longueur:', cleanedKey.length, ')');
           } else if (data.error) {
             throw new Error(data.error);
           }
