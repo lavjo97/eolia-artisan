@@ -26,7 +26,7 @@ export default function LoginPage() {
       
       // Redirection vers le dashboard
       router.push('/dashboard');
-    } catch (err) {
+    } catch {
       setError('Email ou mot de passe incorrect');
     } finally {
       setIsLoading(false);
