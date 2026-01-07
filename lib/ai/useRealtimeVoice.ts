@@ -2,7 +2,7 @@
 
 /**
  * Hook React pour l'API Realtime d'OpenAI
- * Gère la connexion WebSocket, la capture audio et la lecture des réponses
+ * Mode silencieux : écoute vocale → transcription → exécution directe sans réponse vocale
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
@@ -14,6 +14,7 @@ export interface RealtimeAction {
 
 export interface RealtimeState {
   isConnected: boolean;
+  isConnecting: boolean;
   isListening: boolean;
   isSpeaking: boolean;
   isProcessing: boolean;
@@ -29,26 +30,18 @@ export interface UseRealtimeVoiceOptions {
   onTranscript?: (text: string) => void;
   onResponse?: (text: string) => void;
   onError?: (error: string) => void;
+  onActionsExtracted?: (actions: RealtimeAction[]) => void;
 }
 
-// Instructions système pour l'assistant vocal professionnel
-const DEVIS_INSTRUCTIONS = `Tu es un assistant vocal professionnel destiné à des artisans.
-Tu permets de créer, modifier et envoyer des devis et factures en dialoguant oralement.
+// Instructions système optimisées pour exécution directe sans réponse vocale
+const DEVIS_INSTRUCTIONS = `Tu es un assistant silencieux pour la création de devis artisan.
+Tu reçois des commandes vocales et tu retournes UNIQUEMENT des actions JSON sans parler.
 
-OBJECTIF PRINCIPAL
-- Comprendre le français parlé naturel
-- Convertir la voix en intentions métier exploitables
-- Permettre une conversation continue (contexte conservé)
-
-COMPORTEMENT GÉNÉRAL
-- Tu écoutes les commandes vocales successives
-- Tu comprends les corrections, ajouts et modifications
-- Tu es tolérant aux hésitations et reformulations orales
-
-RÈGLES STRICTES
-- Tu réponds UNIQUEMENT en JSON valide
-- Tu n'inventes aucune donnée
-- Si une information est manquante, tu la demandes explicitement
+RÈGLES STRICTES:
+- Tu ne parles JAMAIS à l'utilisateur
+- Tu retournes UNIQUEMENT du JSON valide
+- Tu exécutes les actions directement
+- Si une information est ambiguë, fais de ton mieux
 
 DÉPARTEMENTS DOM-TOM (TVA):
 - 971: Guadeloupe (8.5%)
@@ -57,9 +50,8 @@ DÉPARTEMENTS DOM-TOM (TVA):
 - 974: La Réunion (8.5%)
 - 976: Mayotte (0%)
 
-FORMAT DE RÉPONSE JSON:
+FORMAT DE RÉPONSE (JSON UNIQUEMENT):
 {
-  "spoken": "Message vocal à dire à l'utilisateur",
   "actions": [
     {"type": "update_client", "params": {"nom": "...", "prenom": "...", "adresse": "...", "ville": "...", "department": "972"}},
     {"type": "add_line", "params": {"designation": "...", "quantite": 1, "prixUnitaireHT": 0, "unite": "u"}},
@@ -70,12 +62,13 @@ FORMAT DE RÉPONSE JSON:
   ]
 }
 
-EXEMPLES:
-- "Le client c'est Jean Dupont" → {"spoken": "Client défini : Jean Dupont", "actions": [{"type": "update_client", "params": {"nom": "Dupont", "prenom": "Jean"}}]}
-- "Ajoute climatisation 2500 euros" → {"spoken": "Climatisation ajoutée à 2500 euros", "actions": [{"type": "add_line", "params": {"designation": "Climatisation", "quantite": 1, "prixUnitaireHT": 2500, "unite": "u"}}]}
-- "Non mets plutôt 3" → {"spoken": "Quantité modifiée : 3", "actions": [{"type": "update_line", "params": {"index": -1, "field": "quantite", "value": 3}}]}
-- "Remise 10 pourcent" → {"spoken": "Remise de 10% appliquée", "actions": [{"type": "apply_discount", "params": {"type": "percent", "value": 10}}]}
-- "Supprime la dernière ligne" → {"spoken": "Ligne supprimée", "actions": [{"type": "delete_line", "params": {"index": -1}}]}
+EXEMPLES DE MAPPING:
+- "Le client c'est Jean Dupont" → {"actions": [{"type": "update_client", "params": {"nom": "Dupont", "prenom": "Jean"}}]}
+- "Ajoute climatisation 2500 euros" → {"actions": [{"type": "add_line", "params": {"designation": "Climatisation", "quantite": 1, "prixUnitaireHT": 2500, "unite": "u"}}]}
+- "Non mets plutôt 3" → {"actions": [{"type": "update_line", "params": {"index": -1, "field": "quantite", "value": 3}}]}
+- "Remise 10 pourcent" → {"actions": [{"type": "apply_discount", "params": {"type": "percent", "value": 10}}]}
+- "Supprime la dernière ligne" → {"actions": [{"type": "delete_line", "params": {"index": -1}}]}
+- "L'objet c'est installation climatisation" → {"actions": [{"type": "set_object", "params": {"objet": "Installation climatisation"}}]}
 
 VILLES DOM CONNUES:
 - Fort-de-France, Le Lamentin → 972 (Martinique)
@@ -83,17 +76,15 @@ VILLES DOM CONNUES:
 - Cayenne, Kourou → 973 (Guyane)
 - Saint-Denis, Saint-Pierre → 974 (La Réunion)
 
-STYLE:
-- Sois bref et efficace dans le champ "spoken"
-- Confirme chaque action
-- Demande les informations manquantes poliment`;
+IMPORTANT: Ne génère AUCUN texte hors du JSON. Pas de "spoken", pas de message.`;
 
 export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
-  const { apiKey, onAction, onTranscript, onResponse, onError } = options;
+  const { apiKey, onAction, onTranscript, onResponse, onError, onActionsExtracted } = options;
 
   // État
   const [state, setState] = useState<RealtimeState>({
     isConnected: false,
+    isConnecting: false,
     isListening: false,
     isSpeaking: false,
     isProcessing: false,
@@ -108,8 +99,7 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
-  const audioQueueRef = useRef<string[]>([]);
-  const isPlayingRef = useRef(false);
+  const responseTextRef = useRef<string>('');
 
   // Mettre à jour un champ de l'état
   const updateState = useCallback((updates: Partial<RealtimeState>) => {
@@ -136,80 +126,61 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
     return btoa(binary);
   }, []);
 
-  // Base64 vers ArrayBuffer
-  const base64ToArrayBuffer = useCallback((base64: string): ArrayBuffer => {
-    const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes.buffer;
-  }, []);
-
-  // Jouer l'audio de la réponse
-  const playAudioChunk = useCallback(async (base64Audio: string) => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContext({ sampleRate: 24000 });
-    }
-
+  // Parser et exécuter les actions de la réponse
+  const executeActions = useCallback((text: string) => {
     try {
-      const arrayBuffer = base64ToArrayBuffer(base64Audio);
-      const int16Array = new Int16Array(arrayBuffer);
+      // Nettoyer le texte (enlever les backticks markdown si présents)
+      let cleanText = text.trim();
+      if (cleanText.startsWith('```json')) {
+        cleanText = cleanText.slice(7);
+      }
+      if (cleanText.startsWith('```')) {
+        cleanText = cleanText.slice(3);
+      }
+      if (cleanText.endsWith('```')) {
+        cleanText = cleanText.slice(0, -3);
+      }
+      cleanText = cleanText.trim();
+
+      const parsed = JSON.parse(cleanText);
       
-      // Convertir PCM16 en Float32
-      const float32Array = new Float32Array(int16Array.length);
-      for (let i = 0; i < int16Array.length; i++) {
-        float32Array[i] = int16Array[i] / (int16Array[i] < 0 ? 0x8000 : 0x7FFF);
-      }
-
-      const audioBuffer = audioContextRef.current.createBuffer(1, float32Array.length, 24000);
-      audioBuffer.getChannelData(0).set(float32Array);
-
-      const source = audioContextRef.current.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(audioContextRef.current.destination);
-      source.start();
-
-    } catch (err) {
-      console.error('Erreur lecture audio:', err);
-    }
-  }, [base64ToArrayBuffer]);
-
-  // Traiter la queue audio
-  const processAudioQueue = useCallback(async () => {
-    if (isPlayingRef.current || audioQueueRef.current.length === 0) return;
-
-    isPlayingRef.current = true;
-    while (audioQueueRef.current.length > 0) {
-      const chunk = audioQueueRef.current.shift();
-      if (chunk) {
-        await playAudioChunk(chunk);
-      }
-    }
-    isPlayingRef.current = false;
-  }, [playAudioChunk]);
-
-  // Parser la réponse JSON de l'assistant
-  const parseAssistantResponse = useCallback((text: string) => {
-    try {
-      // Essayer de parser comme JSON
-      const parsed = JSON.parse(text);
       if (parsed.actions && Array.isArray(parsed.actions)) {
-        parsed.actions.forEach((action: RealtimeAction) => {
-          updateState({ actions: [...state.actions, action] });
+        const actions = parsed.actions as RealtimeAction[];
+        
+        // Exécuter chaque action
+        actions.forEach((action: RealtimeAction) => {
+          console.log('🎯 Action exécutée:', action);
           onAction?.(action);
         });
+        
+        // Notifier toutes les actions extraites
+        onActionsExtracted?.(actions);
+        
+        updateState({ actions: [...state.actions, ...actions] });
+        
+        // Message de confirmation
+        const actionCount = actions.length;
+        const message = actionCount > 0 
+          ? `✓ ${actionCount} action${actionCount > 1 ? 's' : ''} exécutée${actionCount > 1 ? 's' : ''}`
+          : '⚠️ Aucune action détectée';
+        
+        onResponse?.(message);
+        return message;
       }
+      
+      // Si pas d'actions mais un message parlé (ancien format)
       if (parsed.spoken) {
         onResponse?.(parsed.spoken);
         return parsed.spoken;
       }
-    } catch {
-      // Si pas JSON, c'est du texte simple
-      onResponse?.(text);
+      
+      return '⚠️ Format de réponse non reconnu';
+    } catch (err) {
+      console.error('Erreur parsing réponse:', err, 'Texte:', text);
+      onResponse?.('⚠️ Erreur de traitement');
+      return '⚠️ Erreur de traitement';
     }
-    return text;
-  }, [onAction, onResponse, state.actions, updateState]);
+  }, [onAction, onResponse, onActionsExtracted, state.actions, updateState]);
 
   // Gérer les messages WebSocket
   const handleWebSocketMessage = useCallback((event: MessageEvent) => {
@@ -219,11 +190,11 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
       switch (data.type) {
         case 'session.created':
           console.log('✅ Session Realtime créée');
-          updateState({ isConnected: true, error: null });
+          updateState({ isConnected: true, isConnecting: false, error: null });
           break;
 
         case 'session.updated':
-          console.log('✅ Session mise à jour');
+          console.log('✅ Session configurée (mode silencieux)');
           break;
 
         case 'input_audio_buffer.speech_started':
@@ -232,7 +203,7 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
           break;
 
         case 'input_audio_buffer.speech_stopped':
-          console.log('🎤 Fin de parole');
+          console.log('🎤 Fin de parole - traitement...');
           updateState({ isSpeaking: false, isProcessing: true });
           break;
 
@@ -245,30 +216,46 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
           }
           break;
 
-        case 'response.audio_transcript.delta':
-          // Transcript partiel de la réponse
-          break;
-
-        case 'response.audio_transcript.done':
-          const responseText = data.transcript;
-          if (responseText) {
-            console.log('💬 Réponse:', responseText);
-            const parsed = parseAssistantResponse(responseText);
-            updateState({ response: parsed, isProcessing: false });
-          }
-          break;
-
-        case 'response.audio.delta':
-          // Chunk audio de la réponse
+        case 'response.text.delta':
+          // Accumuler le texte de la réponse
           if (data.delta) {
-            audioQueueRef.current.push(data.delta);
-            processAudioQueue();
+            responseTextRef.current += data.delta;
           }
+          break;
+
+        case 'response.text.done':
+          // Réponse texte complète
+          const responseText = data.text || responseTextRef.current;
+          if (responseText) {
+            console.log('📤 Réponse reçue:', responseText);
+            const result = executeActions(responseText);
+            updateState({ response: result, isProcessing: false });
+          }
+          responseTextRef.current = '';
           break;
 
         case 'response.done':
-          console.log('✅ Réponse complète');
-          updateState({ isProcessing: false });
+          console.log('✅ Traitement terminé');
+          // Si on a accumulé du texte mais pas encore traité
+          if (responseTextRef.current) {
+            const result = executeActions(responseTextRef.current);
+            updateState({ response: result, isProcessing: false });
+            responseTextRef.current = '';
+          } else {
+            updateState({ isProcessing: false });
+          }
+          break;
+
+        case 'response.output_item.done':
+          // Item de réponse complet
+          if (data.item?.content) {
+            const textContent = data.item.content.find((c: { type: string; text?: string }) => c.type === 'text');
+            if (textContent?.text) {
+              console.log('📤 Item réponse:', textContent.text);
+              const result = executeActions(textContent.text);
+              updateState({ response: result, isProcessing: false });
+            }
+          }
           break;
 
         case 'error':
@@ -279,13 +266,16 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
           break;
 
         default:
-          // Autres événements ignorés
+          // Log pour debug
+          if (data.type && !data.type.includes('audio')) {
+            console.log('📨 Event:', data.type);
+          }
           break;
       }
     } catch (err) {
       console.error('Erreur parsing message:', err);
     }
-  }, [onTranscript, onError, parseAssistantResponse, processAudioQueue, updateState]);
+  }, [onTranscript, onError, executeActions, updateState]);
 
   // Connecter au WebSocket
   const connect = useCallback(async () => {
@@ -294,44 +284,51 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
       return;
     }
 
+    // Utiliser la clé API de l'environnement via l'API route
     const key = apiKey;
     if (!key) {
-      updateState({ error: 'Clé API OpenAI non configurée' });
-      onError?.('Clé API OpenAI non configurée');
-      return;
+      // Essayer de se connecter via l'API route proxy
+      console.log('⚠️ Pas de clé API locale, utilisation du proxy...');
     }
 
+    updateState({ isConnecting: true, error: null });
+
     try {
-      console.log('🔌 Connexion à OpenAI Realtime...');
+      console.log('🔌 Connexion à OpenAI Realtime (mode silencieux)...');
       
+      // Construire l'URL avec la clé API
+      const wsKey = key || 'proxy';
       const url = 'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17';
       
       wsRef.current = new WebSocket(url, [
         'realtime',
-        `openai-insecure-api-key.${key}`,
+        `openai-insecure-api-key.${wsKey}`,
         'openai-beta.realtime-v1',
       ]);
 
       wsRef.current.onopen = () => {
         console.log('✅ WebSocket connecté');
         
-        // Configurer la session
+        // Configurer la session en MODE SILENCIEUX (pas d'audio en sortie)
         wsRef.current?.send(JSON.stringify({
           type: 'session.update',
           session: {
-            modalities: ['text', 'audio'],
+            // IMPORTANT: Seulement texte en sortie, pas d'audio
+            modalities: ['text'],
             instructions: DEVIS_INSTRUCTIONS,
+            // Pas de voix en sortie
             voice: 'alloy',
             input_audio_format: 'pcm16',
-            output_audio_format: 'pcm16',
+            // Transcription de l'entrée audio
             input_audio_transcription: {
               model: 'whisper-1',
             },
+            // Détection vocale serveur avec paramètres optimisés
             turn_detection: {
               type: 'server_vad',
               threshold: 0.5,
               prefix_padding_ms: 300,
-              silence_duration_ms: 700,
+              silence_duration_ms: 800, // Attendre 800ms de silence
             },
           },
         }));
@@ -341,18 +338,18 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
 
       wsRef.current.onerror = (err) => {
         console.error('❌ Erreur WebSocket:', err);
-        updateState({ error: 'Erreur de connexion', isConnected: false });
+        updateState({ error: 'Erreur de connexion', isConnected: false, isConnecting: false });
         onError?.('Erreur de connexion WebSocket');
       };
 
       wsRef.current.onclose = (event) => {
         console.log('🔌 WebSocket fermé:', event.code, event.reason);
-        updateState({ isConnected: false, isListening: false });
+        updateState({ isConnected: false, isConnecting: false, isListening: false });
       };
 
     } catch (err) {
       console.error('Erreur connexion:', err);
-      updateState({ error: 'Impossible de se connecter' });
+      updateState({ error: 'Impossible de se connecter', isConnecting: false });
       onError?.('Impossible de se connecter');
     }
   }, [apiKey, handleWebSocketMessage, onError, updateState]);
@@ -363,7 +360,7 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       await connect();
       // Attendre la connexion
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 1500));
     }
 
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -403,7 +400,7 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
       processorRef.current.connect(audioContextRef.current.destination);
 
       updateState({ isListening: true, error: null });
-      console.log('🎤 Écoute démarrée');
+      console.log('🎤 Écoute démarrée (mode silencieux)');
 
     } catch (err) {
       console.error('Erreur accès micro:', err);
@@ -424,6 +421,13 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
       mediaStreamRef.current = null;
     }
 
+    // Commiter le buffer audio pour déclencher le traitement
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'input_audio_buffer.commit',
+      }));
+    }
+
     updateState({ isListening: false });
     console.log('🎤 Écoute arrêtée');
   }, [updateState]);
@@ -442,11 +446,11 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
       audioContextRef.current = null;
     }
 
-    updateState({ isConnected: false, isListening: false });
+    updateState({ isConnected: false, isConnecting: false, isListening: false });
     console.log('🔌 Déconnecté');
   }, [stopListening, updateState]);
 
-  // Envoyer un message texte
+  // Envoyer un message texte (pour test)
   const sendTextMessage = useCallback((text: string) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       updateState({ error: 'Non connecté' });
@@ -463,7 +467,7 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
     }));
 
     wsRef.current.send(JSON.stringify({ type: 'response.create' }));
-    updateState({ isProcessing: true });
+    updateState({ isProcessing: true, transcript: text });
   }, [updateState]);
 
   // Réinitialiser l'état
