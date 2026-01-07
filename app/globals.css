@@ -1,0 +1,303 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Variables CSS - Thème Solaire */
+:root {
+  --background: #0f172a;
+  --foreground: #f8fafc;
+  --accent: #f97316;
+  --accent-light: #fb923c;
+  --accent-glow: #fbbf24;
+  --card-bg: #1e293b;
+  --card-elevated: #334155;
+  --border: #334155;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --success: #22c55e;
+  --warning: #eab308;
+  --error: #ef4444;
+  --info: #3b82f6;
+}
+
+/* Base styles */
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* PWA fullscreen mode */
+@media all and (display-mode: standalone) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* Fond avec dégradé subtil solaire */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    radial-gradient(ellipse at top right, rgba(249, 115, 22, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at bottom left, rgba(251, 191, 36, 0.05) 0%, transparent 50%),
+    linear-gradient(180deg, #0f172a 0%, #020617 100%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Scrollbar custom pour thème sombre */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--card-bg);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--card-elevated);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+/* Focus visible pour accessibilité */
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Sélection de texte */
+::selection {
+  background-color: rgba(249, 115, 22, 0.4);
+  color: var(--foreground);
+}
+
+@layer components {
+  /* Boutons tactiles haute visibilité */
+  .btn-primary {
+    @apply px-6 py-4 min-h-touch rounded-touch-lg font-semibold text-touch
+           bg-solaire-accent text-solaire-text-inverse
+           transition-all duration-200 ease-out
+           hover:bg-solaire-accent-light hover:shadow-solaire
+           active:scale-[0.98] active:bg-solaire-accent-dark
+           focus-visible:ring-2 focus-visible:ring-solaire-accent-glow focus-visible:ring-offset-2 focus-visible:ring-offset-solaire-bg
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none;
+  }
+
+  .btn-secondary {
+    @apply px-6 py-4 min-h-touch rounded-touch-lg font-semibold text-touch
+           bg-solaire-bg-elevated text-solaire-text border-2 border-solaire-border
+           transition-all duration-200 ease-out
+           hover:border-solaire-accent hover:text-solaire-accent
+           active:scale-[0.98] active:bg-solaire-bg-card
+           focus-visible:ring-2 focus-visible:ring-solaire-accent focus-visible:ring-offset-2 focus-visible:ring-offset-solaire-bg
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply px-4 py-3 min-h-touch-sm rounded-touch font-medium text-touch
+           text-solaire-text-secondary bg-transparent
+           transition-all duration-200 ease-out
+           hover:bg-solaire-bg-elevated hover:text-solaire-text
+           active:scale-[0.98]
+           focus-visible:ring-2 focus-visible:ring-solaire-accent focus-visible:ring-offset-2 focus-visible:ring-offset-solaire-bg;
+  }
+
+  .btn-icon {
+    @apply p-3 min-w-touch min-h-touch rounded-full
+           flex items-center justify-center
+           bg-solaire-bg-elevated text-solaire-text
+           transition-all duration-200 ease-out
+           hover:bg-solaire-bg-card hover:text-solaire-accent
+           active:scale-95
+           focus-visible:ring-2 focus-visible:ring-solaire-accent;
+  }
+
+  /* Cartes */
+  .card {
+    @apply bg-solaire-bg-card rounded-touch-lg border border-solaire-border
+           p-5 shadow-lg backdrop-blur-sm;
+  }
+
+  .card-elevated {
+    @apply bg-solaire-bg-elevated rounded-touch-lg border border-solaire-border-light
+           p-5 shadow-xl;
+  }
+
+  /* Inputs tactiles */
+  .input-field {
+    @apply w-full px-4 py-4 min-h-touch rounded-touch
+           bg-solaire-bg-elevated text-solaire-text text-touch
+           border-2 border-solaire-border
+           placeholder:text-solaire-text-muted
+           transition-all duration-200 ease-out
+           focus:border-solaire-accent focus:ring-2 focus:ring-solaire-accent/30 focus:outline-none
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .input-label {
+    @apply block text-sm font-medium text-solaire-text-secondary mb-2;
+  }
+
+  .input-error {
+    @apply text-sm text-solaire-error mt-1;
+  }
+
+  /* Textarea */
+  .textarea-field {
+    @apply w-full px-4 py-4 min-h-[120px] rounded-touch
+           bg-solaire-bg-elevated text-solaire-text text-touch
+           border-2 border-solaire-border
+           placeholder:text-solaire-text-muted
+           transition-all duration-200 ease-out resize-y
+           focus:border-solaire-accent focus:ring-2 focus:ring-solaire-accent/30 focus:outline-none;
+  }
+
+  /* Select */
+  .select-field {
+    @apply w-full px-4 py-4 min-h-touch rounded-touch
+           bg-solaire-bg-elevated text-solaire-text text-touch
+           border-2 border-solaire-border
+           appearance-none cursor-pointer
+           bg-[url('data:image/svg+xml;charset=UTF-8,%3csvg%20xmlns%3d%22http%3a%2f%2fwww.w3.org%2f2000%2fsvg%22%20width%3d%2224%22%20height%3d%2224%22%20viewBox%3d%220%200%2024%2024%22%20fill%3d%22none%22%20stroke%3d%22%23cbd5e1%22%20stroke-width%3d%222%22%20stroke-linecap%3d%22round%22%20stroke-linejoin%3d%22round%22%3e%3cpath%20d%3d%22m6%209%206%206%206-6%22%2f%3e%3c%2fsvg%3e')]
+           bg-no-repeat bg-[right_1rem_center] bg-[length:1.5rem]
+           transition-all duration-200 ease-out
+           focus:border-solaire-accent focus:ring-2 focus:ring-solaire-accent/30 focus:outline-none;
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-sm font-medium;
+  }
+
+  .badge-accent {
+    @apply badge bg-solaire-accent/20 text-solaire-accent border border-solaire-accent/30;
+  }
+
+  .badge-success {
+    @apply badge bg-solaire-success/20 text-solaire-success border border-solaire-success/30;
+  }
+
+  .badge-warning {
+    @apply badge bg-solaire-warning/20 text-solaire-warning border border-solaire-warning/30;
+  }
+
+  .badge-error {
+    @apply badge bg-solaire-error/20 text-solaire-error border border-solaire-error/30;
+  }
+
+  /* Headers */
+  .page-title {
+    @apply text-2xl md:text-3xl font-bold text-solaire-text mb-2;
+  }
+
+  .section-title {
+    @apply text-xl font-semibold text-solaire-text mb-4;
+  }
+
+  /* Container responsive */
+  .container-app {
+    @apply max-w-4xl mx-auto px-4 py-6 md:px-6 md:py-8;
+  }
+
+  /* Divider */
+  .divider {
+    @apply border-t border-solaire-border my-4;
+  }
+
+  /* Animation de chargement */
+  .loading-spinner {
+    @apply w-6 h-6 border-2 border-solaire-accent/30 border-t-solaire-accent rounded-full animate-spin;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Effet de brillance sur les boutons */
+  .shine-effect {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .shine-effect::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.1),
+      transparent
+    );
+    transition: left 0.5s ease;
+  }
+
+  .shine-effect:hover::after {
+    left: 100%;
+  }
+
+  /* Texte avec glow */
+  .text-glow {
+    text-shadow: 0 0 10px rgba(249, 115, 22, 0.5);
+  }
+
+  /* Safe area padding */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* No tap highlight sur mobile */
+  .no-tap-highlight {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Animation shimmer */
+  @keyframes shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  .animate-shimmer {
+    animation: shimmer 2s infinite;
+  }
+}
