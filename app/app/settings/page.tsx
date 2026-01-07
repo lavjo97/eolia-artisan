@@ -336,8 +336,8 @@ export default function SettingsPage() {
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">Taux de TVA par défaut</label>
               <select
-                value={settings.tauxTVADefaut || '8.5'}
-                onChange={(e) => updateField('tauxTVADefaut', e.target.value)}
+                value={settings.tauxTVA || '8.5'}
+                onChange={(e) => updateField('tauxTVA', e.target.value)}
                 className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="0">0% (Guyane, Mayotte)</option>
