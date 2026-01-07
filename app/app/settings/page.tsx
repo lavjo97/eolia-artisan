@@ -17,7 +17,7 @@ const tabs: { id: TabId; label: string; icon: string }[] = [
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabId>('entreprise');
-  const [settings, setSettings] = useState<EntrepriseSettings>({});
+  const [settings, setSettings] = useState<Partial<EntrepriseSettings>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
 
@@ -47,7 +47,7 @@ export default function SettingsPage() {
 
   // Mettre à jour un champ
   const updateField = (field: keyof EntrepriseSettings, value: string | boolean | number | string[] | undefined) => {
-    setSettings(prev => ({ ...prev, [field]: value }));
+    setSettings((prev: Partial<EntrepriseSettings>) => ({ ...prev, [field]: value }));
   };
 
   return (
