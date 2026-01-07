@@ -297,8 +297,9 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
           const data = await response.json();
           
           if (data.success && data.apiKey) {
-            key = data.apiKey;
-            console.log('✅ Clé API récupérée depuis Vercel');
+            // Nettoyer la clé API (enlever espaces et retours à la ligne)
+            key = data.apiKey.trim().replace(/[\r\n]/g, '');
+            console.log('✅ Clé API récupérée depuis Vercel (longueur:', key.length, ')');
           } else if (data.error) {
             throw new Error(data.error);
           }

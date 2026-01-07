@@ -42,17 +42,20 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const rawApiKey = process.env.OPENAI_API_KEY;
 
-  if (!apiKey) {
+  if (!rawApiKey) {
     return NextResponse.json(
       { error: 'Clé API OpenAI non configurée. Configurez OPENAI_API_KEY dans Vercel.' },
       { status: 401 }
     );
   }
 
+  // Nettoyer la clé API (enlever espaces, retours à la ligne)
+  const apiKey = rawApiKey.trim().replace(/[\r\n]/g, '');
+
   // Log pour debug (masqué en production)
-  console.log('[Realtime API] Clé API disponible:', apiKey.substring(0, 10) + '...');
+  console.log('[Realtime API] Clé API disponible:', apiKey.substring(0, 10) + '... (longueur:', apiKey.length, ')');
 
   // Retourner la clé pour la connexion WebSocket
   // Note: Ceci est nécessaire car le WebSocket doit être initié côté client
@@ -75,14 +78,17 @@ export async function POST(request: NextRequest) {
     }
 
     const { action } = await request.json();
-    const apiKey = process.env.OPENAI_API_KEY;
+    const rawApiKey = process.env.OPENAI_API_KEY;
 
-    if (!apiKey) {
+    if (!rawApiKey) {
       return NextResponse.json(
         { error: 'Clé API OpenAI non configurée. Configurez OPENAI_API_KEY dans Vercel.' },
         { status: 401 }
       );
     }
+
+    // Nettoyer la clé API
+    const apiKey = rawApiKey.trim().replace(/[\r\n]/g, '');
 
     if (action === 'get_config') {
       return NextResponse.json({
